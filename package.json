@@ -1,0 +1,27 @@
+{
+  "name": "github-osv-vulnerability-scanner",
+  "version": "1.0.0",
+  "description": "Automated GitHub Webhook dependency scanner powered by Google OSV API and Smee.io",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "github",
+    "webhook",
+    "security",
+    "vulnerability",
+    "osv",
+    "scanner",
+    "smee"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "smee-client": "^2.0.4",
+    "cors": "^2.8.5"
+  }
+}

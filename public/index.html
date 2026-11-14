@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VulnWatch — GitHub Webhook OSV Vulnerability Scanner</title>
+  <meta name="description" content="Automated dependency security scanner powered by GitHub Webhooks and Google Open Source Vulnerability (OSV) API">
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <!-- Main Container -->
+  <div class="app-container">
+
+    <!-- Top Navigation -->
+    <header class="top-nav">
+      <div class="brand-group">
+        <div class="shield-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M9 12l2 2 4-4" stroke="#10b981" stroke-width="2.5"/>
+          </svg>
+          <div class="pulse-ring"></div>
+        </div>
+        <div>
+          <div class="brand-title">Vuln<span>Watch</span></div>
+          <div class="brand-subtitle">GitHub Webhook • OSV.dev Security Engine</div>
+        </div>
+      </div>
+
+      <!-- Live Status Badges -->
+      <div class="status-pills">
+        <div class="pill" id="smee-pill" title="Smee.io Webhook Delivery Channel">
+          <span class="dot pulse-amber"></span>
+          <span class="pill-label">Smee:</span>
+          <span class="pill-value" id="smee-status-text">Connecting...</span>
+        </div>
+        <div class="pill" id="osv-pill" title="Google/OpenSSF OSV.dev Database">
+          <span class="dot pulse-green"></span>
+          <span class="pill-label">OSV API:</span>
+          <span class="pill-value">Online</span>
+        </div>
+        <div class="pill" id="github-auth-pill" onclick="switchTab('tab-setup')" style="cursor: pointer;" title="GitHub Authorization Status">
+          <span class="dot pulse-amber" id="github-auth-dot"></span>
+          <span class="pill-label">GitHub:</span>
+          <span class="pill-value" id="github-auth-text">Checking...</span>
+        </div>
+        <button id="btn-quick-scan" class="btn btn-primary" onclick="switchTab('tab-manual')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          Manual Scan
+        </button>
+      </div>
+    </header>
+
+    <!-- Hero / Active Scan Banner -->
+    <section class="scan-banner" id="scan-banner">
+      <div class="banner-content">
+        <div class="banner-meta">
+          <span class="badge badge-event" id="banner-event">READY</span>
+          <span class="repo-name" id="banner-repo">Awaiting GitHub Webhook...</span>
+          <span class="branch-tag" id="banner-branch">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="6" y1="3" x2="6" y2="15"></line>
+              <circle cx="18" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <path d="M18 9a9 9 0 0 1-9 9"></path>
+            </svg>
+            <span id="banner-branch-text">main</span>
+          </span>
+          <span class="commit-tag" id="banner-commit">SHA: ---</span>
+          <span class="commit-tag" id="banner-path" style="display:none;">📁 package.json</span>
+        </div>
+        <p class="banner-desc" id="banner-message">Push code to your connected GitHub repo or trigger a manual scan below.</p>
+        <div class="banner-footer">
+          <span id="banner-author">👤 Ready</span>
+          <span class="separator">•</span>
+          <span id="banner-time">Last update: Just now</span>
+        </div>
+      </div>
+      <div class="banner-verdict" id="banner-verdict">
+        <div class="verdict-icon safe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <polyline points="9 11 12 14 22 4"></polyline>
+          </svg>
+        </div>
+        <div class="verdict-text">
+          <div class="verdict-title" id="verdict-title">System Ready</div>
+          <div class="verdict-sub" id="verdict-sub">Waiting for webhook delivery</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Metrics Stat Cards -->
+    <section class="metrics-grid">
+      <div class="metric-card metric-total">
+        <div class="metric-header">
+          <span class="metric-title">Dependencies Scanned</span>
+          <div class="metric-icon total-icon">📦</div>
+        </div>
+        <div class="metric-value" id="stat-total">0</div>
+        <div class="metric-footer" id="stat-clean-sub">0 Clean packages</div>
+      </div>
+
+      <div class="metric-card metric-vulnerable">
+        <div class="metric-header">
+          <span class="metric-title">Vulnerabilities Found</span>
+          <div class="metric-icon vuln-icon">⚠️</div>
+        </div>
+        <div class="metric-value" id="stat-vulnerable">0</div>
+        <div class="metric-footer" id="stat-vuln-pkg-sub">In 0 affected packages</div>
+      </div>
+
+      <div class="metric-card metric-critical">
+        <div class="metric-header">
+          <span class="metric-title">Critical Severity</span>
+          <div class="metric-icon critical-icon">🛑</div>
+        </div>
+        <div class="metric-value" id="stat-critical">0</div>
+        <div class="metric-footer">Immediate action required</div>
+      </div>
+
+      <div class="metric-card metric-high">
+        <div class="metric-header">
+          <span class="metric-title">High Severity</span>
+          <div class="metric-icon high-icon">🔥</div>
+        </div>
+        <div class="metric-value" id="stat-high">0</div>
+        <div class="metric-footer">High priority fixes</div>
+      </div>
+
+      <div class="metric-card metric-medium">
+        <div class="metric-header">
+          <span class="metric-title">Medium / Low</span>
+          <div class="metric-icon medium-icon">⚡</div>
+        </div>
+        <div class="metric-value" id="stat-medium-low">0</div>
+        <div class="metric-footer"><span id="stat-medium">0</span> Med / <span id="stat-low">0</span> Low</div>
+      </div>
+    </section>
+
+    <!-- Main Tabs Navigation -->
+    <nav class="tabs-nav" aria-label="Dashboard sections">
+      <button class="tab-btn active" onclick="switchTab('tab-vulns')" id="btn-tab-vulns">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        Vulnerabilities (<span id="tab-vuln-count">0</span>)
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-packages')" id="btn-tab-packages">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        All Packages (<span id="tab-pkg-count">0</span>)
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-manual')" id="btn-tab-manual">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        On-Demand Scanner
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-history')" id="btn-tab-history">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        Scan History (<span id="tab-history-count">0</span>)
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-logs')" id="btn-tab-logs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="4 17 10 11 4 5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        Webhook Logs
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-setup')" id="btn-tab-setup">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        GitHub Setup Guide
+      </button>
+    </nav>
+
+    <!-- TAB 1: Vulnerabilities List -->
+    <section class="tab-pane active" id="tab-vulns">
+      <div class="pane-toolbar">
+        <div class="search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="vuln-search" placeholder="Search by package name, CVE, GHSA..." oninput="filterVulns()">
+        </div>
+        <div class="filter-pills" id="severity-filters">
+          <button class="filter-btn active" data-sev="ALL" onclick="setSeverityFilter('ALL')">All</button>
+          <button class="filter-btn filter-critical" data-sev="CRITICAL" onclick="setSeverityFilter('CRITICAL')">Critical</button>
+          <button class="filter-btn filter-high" data-sev="HIGH" onclick="setSeverityFilter('HIGH')">High</button>
+          <button class="filter-btn filter-medium" data-sev="MEDIUM" onclick="setSeverityFilter('MEDIUM')">Medium</button>
+          <button class="filter-btn filter-low" data-sev="LOW" onclick="setSeverityFilter('LOW')">Low</button>
+        </div>
+      </div>
+
+      <div class="vulns-container" id="vulns-list">
+        <div class="empty-state">
+          <div class="empty-icon">🛡️</div>
+          <h3>No Scans Yet</h3>
+          <p>Push code to your GitHub repo or use the <strong>On-Demand Scanner</strong> tab to analyze a package.json file.</p>
+          <button class="btn btn-secondary" onclick="switchTab('tab-manual')">Open Scanner</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: All Packages (SBOM) -->
+    <section class="tab-pane" id="tab-packages">
+      <div class="pane-toolbar">
+        <div class="search-box">
+          <input type="text" id="pkg-search" placeholder="Filter packages..." oninput="filterPackages()">
+        </div>
+      </div>
+      <div class="table-card">
+        <table class="data-table" id="packages-table">
+          <thead>
+            <tr>
+              <th>Package Name</th>
+              <th>Declared Version</th>
+              <th>Resolved</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Vulnerabilities</th>
+              <th>Highest Risk</th>
+            </tr>
+          </thead>
+          <tbody id="packages-tbody">
+            <tr>
+              <td colspan="7" class="text-center py-8 text-muted">No scan data loaded</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: On-Demand Manual Scanner -->
+    <section class="tab-pane" id="tab-manual">
+      <div class="manual-grid">
+        <!-- Scan Option 1: GitHub Repo -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <h3>Option A: Scan by GitHub Repository</h3>
+            <p>Fetches package.json directly from GitHub and scans via OSV API.</p>
+          </div>
+          <form id="form-scan-repo" onsubmit="handleRepoScan(event)">
+            <div class="form-group">
+              <label for="input-repo-name">GitHub Repository (owner/repo)</label>
+              <input type="text" id="input-repo-name" placeholder="e.g. facebook/react or expressjs/express" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="input-repo-branch">Branch / Tag / Commit</label>
+                <input type="text" id="input-repo-branch" placeholder="main" value="main">
+              </div>
+              <div class="form-group flex-1">
+                <label for="input-repo-token">GitHub Token (for private repos)</label>
+                <input type="password" id="input-repo-token" placeholder="ghp_xxxx (optional)">
+              </div>
+            </div>
+            <div class="quick-sample-chips">
+              <span>Quick test templates:</span>
+              <button type="button" class="chip" onclick="fillTestRepo('lodash', '4.17.15')">Lodash Test</button>
+              <button type="button" class="chip" onclick="fillTestRepo('axios', '0.21.1')">Axios Test</button>
+              <button type="button" class="chip" onclick="loadVulnerableSampleJson()">Load Sample package.json</button>
+            </div>
+            <button type="submit" class="btn btn-primary w-full mt-4" id="btn-submit-repo-scan">
+              <span>Run OSV Vulnerability Scan</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Scan Option 2: Paste Raw package.json -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <h3>Option B: Paste Raw package.json</h3>
+            <p>Paste any package.json content to instantly audit dependencies.</p>
+          </div>
+          <form id="form-scan-raw" onsubmit="handleRawScan(event)">
+            <div class="form-group">
+              <label for="input-raw-json">package.json Content (JSON)</label>
+              <textarea id="input-raw-json" rows="9" placeholder='{\n  "dependencies": {\n    "lodash": "4.17.15",\n    "axios": "0.21.1",\n    "jsonwebtoken": "8.5.1"\n  }\n}' required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary w-full" id="btn-submit-raw-scan">
+              <span>Analyze Dependencies</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Scan History -->
+    <section class="tab-pane" id="tab-history">
+      <div class="history-list" id="history-container">
+        <div class="empty-state">
+          <p>No historical scans recorded yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: Webhook Activity Logs -->
+    <section class="tab-pane" id="tab-logs">
+      <div class="terminal-card">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <div class="terminal-title">Live Webhook & Smee Activity Stream</div>
+          <button class="btn-xs" onclick="clearLogs()">Clear</button>
+        </div>
+        <div class="terminal-body" id="logs-terminal">
+          <div class="log-line info">
+            <span class="log-time">[Startup]</span>
+            <span class="log-msg">Connecting to Smee.io relay at https://smee.io/4Dskqsw7XjXJssg7</span>
+          </div>
+          <div class="log-line info">
+            <span class="log-time">[Startup]</span>
+            <span class="log-msg">Listening for GitHub Webhook deliveries on /api/webhook</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: Setup Guide -->
+    <section class="tab-pane" id="tab-setup">
+      <!-- Section A: Automated 1-Click GitHub Webhook Setup -->
+      <div class="card glass-card setup-card mb-6" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px; margin-bottom: 16px;">
+          <div>
+            <h2 style="display: flex; align-items: center; gap: 10px;">
+              <span>⚡ Automated 1-Click Webhook Setup</span>
+              <span class="badge badge-scope">OAuth 2.0</span>
+            </h2>
+            <p class="text-muted">Authorize with GitHub to automatically list your repositories and configure webhooks with a single click.</p>
+          </div>
+          <div id="auth-header-action"></div>
+        </div>
+
+        <!-- 1. State: Unauthenticated -->
+        <div id="github-unauthenticated-box" class="auth-box-container">
+          <div class="auth-connected-card" style="background: rgba(15, 23, 42, 0.7); border-color: rgba(255, 255, 255, 0.1);">
+            <div class="auth-user-info">
+              <div style="font-size: 2.2rem;">🐙</div>
+              <div>
+                <div style="font-weight: 700; font-size: 1.1rem;">Connect your GitHub Account</div>
+                <div class="text-muted" style="font-size: 0.88rem;">We will request <code>admin:repo_hook</code> permission to automatically register the webhook URL and secret.</div>
+              </div>
+            </div>
+            <a href="/auth/github" class="btn-github" id="btn-oauth-login">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              <span>Authorize with GitHub</span>
+            </a>
+          </div>
+
+          <!-- Fallback: Personal Access Token Input -->
+          <div class="token-fallback-toggle">
+            <span>Or enter a Personal Access Token with <code>admin:repo_hook</code> scope:</span>
+            <div style="display: flex; gap: 8px; margin-top: 8px; max-width: 550px;">
+              <input type="password" id="input-pat-token" placeholder="ghp_xxxxxxxxxxxx" class="form-control" style="flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: #fff;">
+              <button type="button" class="btn btn-secondary" onclick="saveManualToken()">Link Token</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. State: Authenticated -->
+        <div id="github-authenticated-box" style="display: none;">
+          <!-- User Profile Ribbon -->
+          <div class="auth-connected-card">
+            <div class="auth-user-info">
+              <img id="user-avatar-img" class="auth-avatar" src="" alt="Avatar">
+              <div class="auth-meta">
+                <div class="user-name">
+                  <span id="user-display-name">Username</span>
+                  <span class="badge-scope">Authorized</span>
+                </div>
+                <div class="user-login" id="user-display-login">@login</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button class="btn btn-secondary btn-xs" onclick="refreshUserRepos()" title="Refresh Repositories">
+                🔄 Reload Repos
+              </button>
+              <button class="btn btn-secondary btn-xs" onclick="disconnectGitHub()" title="Log out from GitHub session">
+                Disconnect
+              </button>
+            </div>
+          </div>
+
+          <!-- Automated Webhook Manager Form -->
+          <div class="auto-webhook-manager">
+            <h4 style="margin-bottom: 12px; font-weight: 600;">Select Repository to Configure:</h4>
+            
+            <div class="repo-selection-row">
+              <div class="form-group">
+                <label for="select-user-repo">Your Repositories (Admin access):</label>
+                <select id="select-user-repo" onchange="onRepoSelectionChanged()" style="width: 100%; padding: 10px 14px; background: #0f172a; color: #fff; border: 1px solid var(--border-accent); border-radius: var(--radius-sm); font-size: 0.95rem;">
+                  <option value="">Loading repositories...</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Current Webhook Status:</label>
+                <div id="selected-repo-status" class="webhook-status-badge checking">
+                  <span>Checking...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Buttons for the selected repo -->
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px;">
+              <button type="button" class="btn btn-primary" id="btn-install-webhook" onclick="handleAutoInstallWebhook()">
+                <span>⚡ Auto-Install Webhook</span>
+              </button>
+              <button type="button" class="btn btn-secondary" id="btn-quick-scan-selected" onclick="scanSelectedRepoNow()">
+                <span>Scan Dependencies Now</span>
+              </button>
+              <button type="button" class="btn btn-secondary" id="btn-remove-webhook" onclick="handleRemoveWebhook()" style="display: none; border-color: rgba(239, 68, 68, 0.4); color: #f87171;">
+                <span>Remove Webhook</span>
+              </button>
+            </div>
+
+            <!-- Notice / Payload details -->
+            <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); font-size: 0.84rem; color: var(--text-muted); display: flex; gap: 20px; flex-wrap: wrap;">
+              <div>📡 <strong>Target URL:</strong> <code id="auto-setup-smee">https://smee.io/...</code></div>
+              <div>🔐 <strong>Secret:</strong> <code>Configured via .env</code></div>
+              <div>⚡ <strong>Events:</strong> <code>push, pull_request, ping</code></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section B: Manual Setup Guide (Collapsible Fallback) -->
+      <div class="card glass-card setup-card">
+        <details>
+          <summary style="cursor: pointer; font-size: 1.1rem; font-weight: 700; color: var(--text-main); padding: 4px 0;">
+            📖 Manual Setup Guide (If you prefer to configure GitHub manually)
+          </summary>
+          <p class="text-muted" style="margin-top: 10px;">Follow these steps if you want to configure your repository webhook by hand in GitHub Settings:</p>
+
+          <div class="setup-steps" style="margin-top: 16px;">
+            <div class="step-box">
+              <div class="step-num">1</div>
+              <div class="step-info">
+                <h4>Open your GitHub Repository Settings</h4>
+                <p>Go to your GitHub repo &rarr; <strong>Settings</strong> &rarr; <strong>Webhooks</strong> &rarr; Click <strong>"Add webhook"</strong>.</p>
+              </div>
+            </div>
+
+            <div class="step-box">
+              <div class="step-num">2</div>
+              <div class="step-info">
+                <h4>Set the Payload URL (Smee.io Delivery URL)</h4>
+                <p>Paste your Smee.io channel URL in the <strong>Payload URL</strong> field:</p>
+                <div class="code-box">
+                  <code id="setup-smee-url">https://smee.io/4Dskqsw7XjXJssg7</code>
+                  <button class="copy-btn" onclick="copyText('https://smee.io/4Dskqsw7XjXJssg7')">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-box">
+              <div class="step-num">3</div>
+              <div class="step-info">
+                <h4>Set Content type & Secret</h4>
+                <p>Select <strong>Content type</strong>: <code>application/json</code></p>
+                <p>Set <strong>Secret</strong> to match your <code>.env</code> file:</p>
+                <div class="code-box">
+                  <code>dghdfhsdfjsfgjsfgjf</code>
+                  <button class="copy-btn" onclick="copyText('dghdfhsdfjsfgjsfgjf')">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-box">
+              <div class="step-num">4</div>
+              <div class="step-info">
+                <h4>Select Trigger Events</h4>
+                <p>Choose <strong>"Just the push event"</strong> or <strong>"Let me select individual events"</strong> (check <em>Pushes</em> and <em>Pull requests</em>).</p>
+              </div>
+            </div>
+
+            <div class="step-box">
+              <div class="step-num">5</div>
+              <div class="step-info">
+                <h4>Save & Test!</h4>
+                <p>Click <strong>"Add webhook"</strong>. GitHub will send a test <code>ping</code> event immediately, which will appear in your <strong>Webhook Logs</strong> tab with a green status!</p>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Notification Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
